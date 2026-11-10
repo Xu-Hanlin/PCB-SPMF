@@ -1,0 +1,13 @@
+# Install the explicitly documented torch/torchvision CUDA wheels separately.
+# Use the vendored Ultralytics source, not another PyPI model implementation.
+numpy==1.24.4
+scipy==1.10.1
+opencv-python==4.12.0.88
+Pillow==10.4.0
+PyYAML==6.0.3
+matplotlib==3.7.5
+pandas==2.0.3
+psutil==7.1.3
+tqdm==4.67.1
+requests==2.32.4
+ultralytics-thop==2.0.18

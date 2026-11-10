@@ -1,0 +1,26 @@
+{
+  "bands_zero_based": [
+    155,
+    88,
+    20
+  ],
+  "percentiles": [
+    2,
+    98
+  ],
+  "normalization": "per channel, per image",
+  "registration": "manual only; original integer resize convention",
+  "ids": [
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53
+  ]
+}

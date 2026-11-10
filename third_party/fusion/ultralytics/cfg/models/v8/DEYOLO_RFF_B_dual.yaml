@@ -1,0 +1,88 @@
+# Ultralytics YOLO ??, AGPL-3.0 license
+# DEYOLO (Dual-Backbone) + RFF_Lite (Safe) + DEA (MCF-ready signature)
+# Notes:
+# - This YAML assumes your pipeline provides TWO inputs (RGB + MSI) to backbone/backbone2.
+# - RFF_Lite signature: __init__(c_p1, c_p3)
+# - DEA signature: __init__(channel, kernel_size, p_kernel=None, m_kernel=None, reduction=16)
+
+nc: 3
+
+# Explicit scale to silence "no model scale passed" warning (optional but recommended)
+scale: n
+scales:
+  n: [0.33, 0.25, 1024]
+
+# =========================
+# Backbone 1: RGB (YOLOv8n-style channels)
+# =========================
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, Conv, [16, 3, 2]]              # 0  P1/2
+  - [-1, 1, Conv, [32, 3, 2]]              # 1  P2/4
+  - [-1, 3, C2f_BiFocus, [32, True]]       # 2
+  - [-1, 1, Conv, [64, 3, 2]]              # 3  P3/8
+  - [-1, 6, C2f, [64, True]]               # 4  P3/8
+  - [-1, 1, Conv, [128, 3, 2]]             # 5  P4/16
+  - [-1, 6, C2f, [128, True]]              # 6  P4/16
+  - [-1, 1, Conv, [256, 3, 2]]             # 7  P5/32
+  - [-1, 3, C2f, [256, True]]              # 8  P5/32
+  - [-1, 1, SPPF, [256, 5]]                # 9
+
+# =========================
+# Backbone 2: MSI/HSI (PCA3 -> 3ch)
+# =========================
+backbone2:
+  - [-1, 1, Conv, [16, 3, 2]]              # 10 P1/2
+  - [-1, 1, Conv, [32, 3, 2]]              # 11 P2/4
+  - [-1, 3, C2f_BiFocus, [32, True]]       # 12
+  - [-1, 1, Conv, [64, 3, 2]]              # 13 P3/8
+  - [-1, 6, C2f, [64, True]]               # 14 P3/8
+  - [-1, 1, Conv, [128, 3, 2]]             # 15 P4/16
+  - [-1, 6, C2f, [128, True]]              # 16 P4/16
+  - [-1, 1, Conv, [256, 3, 2]]             # 17 P5/32
+  - [-1, 3, C2f, [256, True]]              # 18 P5/32
+  - [-1, 1, SPPF, [256, 5]]                # 19
+
+# =========================
+# Head
+# =========================
+head:
+  # ---------------------------------------------------------
+  # RFF_Lite (Safe Mode):
+  # Input list: [P1_rgb(0), P1_msi(10), P3_rgb(4)]
+  # It only uses P1_rgb and P3_rgb inside RFF_Lite.py
+  # Args: [c_p1, c_p3] = [16, 64]
+  # ---------------------------------------------------------
+  - [[0, 10, 4], 1, RFF_Lite, [16, 64]]              # 20 enhanced RGB_P3
+
+  # ---------------------------------------------------------
+  # DEA (MCF-ready signature):
+  # Args: [channel, kernel_size, p_kernel, m_kernel, reduction]
+  # ---------------------------------------------------------
+  # P3
+  - [[20, 14], 1, DEA, [64, 80, null, null, 16]]     # 21
+  # P4
+  - [[6, 16],  1, DEA, [128, 40, null, null, 16]]    # 22
+  # P5
+  - [[9, 19],  1, DEA, [256, 20, null, null, 16]]    # 23
+
+  # ---------------------------------------------------------
+  # FPN / PAN (YOLOv8n-style)
+  # ---------------------------------------------------------
+  - [-1, 1, nn.Upsample, [null, 2, "nearest"]]        # 24
+  - [[-1, 22], 1, Concat, [1]]                        # 25
+  - [-1, 3, C2f, [128]]                               # 26
+
+  - [-1, 1, nn.Upsample, [null, 2, "nearest"]]        # 27
+  - [[-1, 21], 1, Concat, [1]]                        # 28
+  - [-1, 3, C2f, [64]]                                # 29
+
+  - [-1, 1, Conv, [64, 3, 2]]                         # 30
+  - [[-1, 26], 1, Concat, [1]]                        # 31
+  - [-1, 3, C2f, [128]]                               # 32
+
+  - [-1, 1, Conv, [128, 3, 2]]                        # 33
+  - [[-1, 23], 1, Concat, [1]]                        # 34
+  - [-1, 3, C2f, [256]]                               # 35
+
+  - [[29, 32, 35], 1, Detect, [nc]]                   # 36

@@ -1,0 +1,29 @@
+# Downloaded/generated dataset and experiment assets
+/data/
+/weights/
+/results/
+/outputs/
+/Ultralytics/
+/third_party/fusion/yolo11n.pt
+/third_party/rgb/yolov8n.pt
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.pt
+*.pth
+*.onnx
+
+# Local environments, caches and credentials
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,76 @@
+# Ultralytics YOLO 🚀, AGPL-3.0 license
+# Double-Stream Segmentation Model with DEA Fusion
+# based on your provided detection architecture
+
+# Parameters
+nc: 3   # 🔥 请确认这里是 3 (IC, Capacitor, Resistor/Connector)
+scales: # model compound scaling constants
+  n: [0.33, 0.25, 1024]
+  s: [0.33, 0.50, 1024]
+  m: [0.67, 0.75, 768]
+  l: [1.00, 1.00, 512]
+  x: [1.00, 1.25, 512]
+
+# =========================================================
+# 1. Backbone 1: 可见光 (RGB)
+# =========================================================
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, Conv, [64, 3, 2]]    # 0-P1/2
+  - [-1, 1, Conv, [128, 3, 2]]   # 1-P2/4
+  - [-1, 3, C2f_BiFocus, [128, True]] # Custom Module
+  - [-1, 1, Conv, [256, 3, 2]]   # 3-P3/8
+  - [-1, 6, C2f, [256, True]]
+  - [-1, 1, Conv, [512, 3, 2]]   # 5-P4/16
+  - [-1, 6, C2f, [512, True]]
+  - [-1, 1, Conv, [1024, 3, 2]]  # 7-P5/32
+  - [-1, 3, C2f, [1024, True]]
+  - [-1, 1, SPPF, [1024, 5]]     # 9
+
+# =========================================================
+# 2. Backbone 2: 光谱/红外 (MSI/IR)
+# =========================================================
+backbone2:
+  # [from, repeats, module, args]
+  # 🔥 注意：如果你的 .png 是单通道，请将下面的 3 改为 1
+  - [-1, 1, Conv, [64, 3, 2]]    # 10-P1/2 (假设 MSI 是 3 通道)
+  - [-1, 1, Conv, [128, 3, 2]]   # 11-P2/4
+  - [-1, 3, C2f_BiFocus, [128, True]]
+  - [-1, 1, Conv, [256, 3, 2]]   # 13-P3/8
+  - [-1, 6, C2f, [256, True]]
+  - [-1, 1, Conv, [512, 3, 2]]   # 15-P4/16
+  - [-1, 6, C2f, [512, True]]
+  - [-1, 1, Conv, [1024, 3, 2]]  # 17-P5/32
+  - [-1, 3, C2f, [1024, True]]
+  - [-1, 1, SPPF, [1024, 5]]     # 19
+
+# =========================================================
+# 3. Head: 融合与分割
+# =========================================================
+head:
+  # --- DEA Fusion (双流融合) ---
+  - [[4, 14], 1, DEA, [256, 80]]   # 20 Fusion P3
+  - [[6, 16], 1, DEA, [512, 40]]   # 21 Fusion P4
+  - [[9, 19], 1, DEA, [1024, 20]]  # 22 Fusion P5
+
+  # --- Neck (FPN + PAN) ---
+  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]
+  - [[-1, 21], 1, Concat, [1]]     # cat backbone P4 (Fused)
+  - [-1, 3, C2f, [512]]            # 25
+
+  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]
+  - [[-1, 20], 1, Concat, [1]]     # cat backbone P3 (Fused)
+  - [-1, 3, C2f, [256]]            # 28 (P3/8-small)
+
+  - [-1, 1, Conv, [256, 3, 2]]
+  - [[-1, 25], 1, Concat, [1]]     # cat head P4
+  - [-1, 3, C2f, [512]]            # 31 (P4/16-medium)
+
+  - [-1, 1, Conv, [512, 3, 2]]
+  - [[-1, 22], 1, Concat, [1]]     # cat head P5
+  - [-1, 3, C2f, [1024]]           # 34 (P5/32-large)
+
+  # --- Segment Head (分割头) ---
+  # 🔥【核心修改】将 Detect 换成了 Segment
+  # 参数说明: [nc, nm, npr] -> [类别数, Mask原型数(32), 原型通道数(256)]
+  - [[28, 31, 34], 1, Segment, [nc, 32, 256]]

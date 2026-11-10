@@ -1,0 +1,74 @@
+# Ultralytics YOLOv8 dual-backbone with SAFE P3+P4 DEA fusion
+# - RGB backbone/head kept aligned with YOLOv8n as much as possible
+# - MSI backbone is parallel
+# - DEA14pos is used only on P3 and P4
+# - P5 remains pure RGB path
+# - Goal: improve localization with shallow+mid scale safe modulation
+
+nc: 3
+scales:
+  n: [0.33, 0.25, 1024]
+
+# -------------------------
+# Backbone 1: RGB
+# -------------------------
+backbone:
+  - [-1, 1, Conv, [64, 3, 2]]        # 0
+  - [-1, 1, Conv, [128, 3, 2]]       # 1
+  - [-1, 3, C2f, [128, True]]        # 2
+  - [-1, 1, Conv, [256, 3, 2]]       # 3
+  - [-1, 6, C2f, [256, True]]        # 4 (P3 RGB)
+  - [-1, 1, Conv, [512, 3, 2]]       # 5
+  - [-1, 6, C2f, [512, True]]        # 6 (P4 RGB)
+  - [-1, 1, Conv, [1024, 3, 2]]      # 7
+  - [-1, 3, C2f, [1024, True]]       # 8
+  - [-1, 1, SPPF, [1024, 5]]         # 9 (P5 RGB)
+
+# -------------------------
+# Backbone 2: MSI/HSI
+# -------------------------
+backbone2:
+  - [-1, 1, Conv, [64, 3, 2]]        # 10
+  - [-1, 1, Conv, [128, 3, 2]]       # 11
+  - [-1, 3, C2f, [128, True]]        # 12
+  - [-1, 1, Conv, [256, 3, 2]]       # 13
+  - [-1, 6, C2f, [256, True]]        # 14 (P3 MSI)
+  - [-1, 1, Conv, [512, 3, 2]]       # 15
+  - [-1, 6, C2f, [512, True]]        # 16 (P4 MSI)
+  - [-1, 1, Conv, [1024, 3, 2]]      # 17
+  - [-1, 3, C2f, [1024, True]]       # 18
+  - [-1, 1, SPPF, [1024, 5]]         # 19 (P5 MSI)
+
+# -------------------------
+# Head
+# -------------------------
+head:
+  # DEA args:
+  # [channel, kernel_size, p_kernel, m_kernel, reduction, g_max, alpha_init,
+  #  per_channel, use_gate, dropout, beta_init, bypass_eps_gate, bypass_eps_msi]
+
+  # P4 safe fusion
+  - [[6, 16], 1, DEA, [512, 20, null, null, 16, 0.50, -2.2, True, True, 0.00, -2.0, 1e-5, 1e-8]]  # 20 (P4 fused)
+
+  # P3 safe fusion
+  - [[4, 14], 1, DEA, [256, 20, null, null, 16, 0.50, -2.2, True, True, 0.00, -2.0, 1e-5, 1e-8]]  # 21 (P3 fused)
+
+  # top-down
+  - [9, 1, nn.Upsample, [None, 2, "nearest"]]         # 22
+  - [[-1, 20], 1, Concat, [1]]                        # 23 (use fused P4)
+  - [-1, 3, C2f, [512]]                               # 24 (P4 neck)
+
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]        # 25
+  - [[-1, 21], 1, Concat, [1]]                        # 26 (use fused P3)
+  - [-1, 3, C2f, [256]]                               # 27 (P3 out)
+
+  # bottom-up
+  - [-1, 1, Conv, [256, 3, 2]]                        # 28
+  - [[-1, 24], 1, Concat, [1]]                        # 29
+  - [-1, 3, C2f, [512]]                               # 30 (P4 out)
+
+  - [-1, 1, Conv, [512, 3, 2]]                        # 31
+  - [[-1, 9], 1, Concat, [1]]                         # 32 (pure RGB P5)
+  - [-1, 3, C2f, [1024]]                              # 33 (P5 out)
+
+  - [[27, 30, 33], 1, Detect, [nc]]                   # 34

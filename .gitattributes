@@ -1,0 +1,2 @@
+# Preserve release checksums across platforms (including vendored snapshots).
+* -text

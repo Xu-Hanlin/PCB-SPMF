@@ -1,0 +1,17 @@
+{
+  "imgsz": 640,
+  "rect": true,
+  "batch": 16,
+  "half": true,
+  "fuse": false,
+  "conf": 0.001,
+  "iou": 0.7,
+  "max_det": 300,
+  "cudnn": 8801,
+  "torch": "2.0.1+cu117",
+  "canvas_primary": [
+    416,
+    672
+  ],
+  "sensitivity_batch": 8
+}

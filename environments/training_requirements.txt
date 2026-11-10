@@ -1,0 +1,6 @@
+-r inference_requirements.txt
+albumentations==1.4.18
+albucore==0.0.17
+scikit-image==0.21.0
+scikit-learn==1.3.2
+pydantic==2.10.6
