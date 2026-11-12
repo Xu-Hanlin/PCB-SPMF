@@ -64,58 +64,65 @@ python -X utf8 reproduce.py fit-spectral --profile paired --raw-root /path/to/PC
 
 Band scoring uses minimum class-pair separability, excludes 20 bands at each edge, and applies a minimum band spacing of 15 and a correlation threshold of 0.98. LDA produces three channels with fitted 1%–99% normalization. The maximum selected-band count is six; the recorded training-only fit retains five bands under the same screening rules. Parameters and fitted transforms are in `configs/` and `transforms/`.
 
-## Checkpoints and reference predictions
+## SPMF and frozen adaptation
 
-Download `PCB-SPMF-assets-v1.0.0.zip` from this repository's **Releases → Assets** and extract it into the repository root:
+SPMF uses a learned Sigmoid reliability factor, channel and spatial gates, and a positive modulation cap of **0.50**. The reliability predictor remains trainable throughout adaptation, with **no training-time reliability floor**. Its output weights start at zero and its bias at -0.5. RGB backbone, neck, head, and batch-normalization parameters and running statistics remain fixed. The implementation settings are in `configs/spmf.json`.
+
+Frozen adaptation uses AdamW for 120 epochs, batch size 8, base learning rate 0.0003, gate learning rate 0.002, and base weight decay 0.0001 (zero for gates). The initial tensors are loaded before applying the same SPMF settings to both the model and its EMA copy.
+
+## Checkpoints and results
+
+Download [PCB-SPMF-assets-v1.1.0.zip](https://github.com/Xu-Hanlin/PCB-SPMF/releases/download/v1.1.0/PCB-SPMF-assets-v1.1.0.zip) and extract it into the repository root:
 
 ```bash
-python -m zipfile -e /path/to/PCB-SPMF-assets-v1.0.0.zip .
+python -m zipfile -e /path/to/PCB-SPMF-assets-v1.1.0.zip .
 python reproduce.py verify
 ```
 
-The asset file contains trained weights, unadapted initialization states, reference predictions, training curves, and bootstrap samples. It contains no PCB images or hyperspectral cubes. Before installing assets, `python reproduce.py verify --code-only` checks the source distribution alone.
+The asset contains the manuscript checkpoints, unadapted initialization states, reference detection records, training curves, and paired bootstrap samples. Dataset images and HSI cubes are not included. Before installing assets, `python reproduce.py verify --code-only` checks the source files alone.
 
-## Evaluation
+| Evaluation | RGB mAP50:95 | SPMF mAP50:95 | Mean difference (percentage points) |
+|---|---:|---:|---:|
+| Main, three adaptation seeds sharing one RGB prior | 0.635033 | 0.638234 | +0.320110 |
+| Paired, fourteen independently pretrained RGB priors | 0.616832 | 0.620324 | +0.349236 |
+
+The main profile applies the supervised LDA transform fitted on all 53 boards. The paired profile fits spectral processing on the 42 training boards only. Both use the 42/11 detector split. Main adaptation seeds are 0, 1, and 2; paired RGB initialization seeds are 3–16. Main seeds share one initial state and are not three independently pretrained RGB detectors.
+
+For the fourteen pairs, the mAP50:95 training-seed 95% interval is [0.222354, 0.476117] percentage points and the paired-PCB interval is [0.179472, 0.425240]. These describe the specified validation protocol; validation boards also supply checkpoint selection. Full-precision P, R, AP50, AP50:95 and all per-seed results are provided in `reference/`.
+
+## Checkpoint evaluation
 
 Run in the CUDA environment after preparing the data and installing the assets:
 
 ```bash
-python reproduce.py evaluate --profile main --output outputs/main
-python reproduce.py evaluate --profile paired --batch 16 --output outputs/paired_primary
-python reproduce.py evaluate --profile paired --batch 8 --output outputs/paired_sensitivity
+python reproduce.py evaluate --profile main --seeds all --output outputs/main_evaluation
+python reproduce.py evaluate --profile paired --seeds all --output outputs/paired_evaluation
 ```
 
-The evaluator runs RGB, SPMF, and SPMF-disabled inference, checks the input branches, and compares predictions with the supplied references. A single paired seed can be selected with `--seeds 3`. Use a new output directory for each run.
+Use `--seeds 0` for one main checkpoint or `--seeds 3,4` for a paired subset. Evaluation uses batch 16, native rectangular padding, nominal size 640, FP16, unfused Conv/BN, confidence 0.001, NMS IoU 0.70, and at most 300 detections. The validation canvas is 416×672. Each checkpoint is checked against its saved metrics and native detection records. SPMF OFF must recover its corresponding RGB predictions exactly.
 
-| Experiment | Spectral fitting population | RGB mAP50:95 | SPMF mAP50:95 |
-|---|---|---:|---:|
-| Selected main checkpoint | All 53 boards | 0.635033 | 0.636350 |
-| Fourteen paired initializations, batch 16 | Training 42 boards | 0.616832 | 0.619330 |
-
-The main SPMF checkpoint has P = 0.904516, R = 0.919212, and mAP50 = 0.929834. Its matched RGB baseline is the same detector recovered by disabling SPMF. The main result is a selected checkpoint and uses all-board supervised spectral fitting; it is not a training-only preprocessing evaluation.
-
-The paired experiment uses seeds 3–16, each with a separate RGB prior. Under the primary setting, the mean mAP50:95 increase is **0.249849 percentage points**, with 14 positive pairs. The seed 95% interval is [0.142963, 0.356736] and the PCB interval is [0.096770, 0.334835] percentage points. Batch-8 evaluation of the same models gives a mean increase of 0.111793 percentage points with 10 positive and 4 negative pairs. Both settings are retained. The 11 validation boards also supply checkpoint selection.
-
-Recompute statistics from the supplied per-board predictions:
+## Paired statistics
 
 ```bash
 python reproduce.py replay-statistics --output outputs/statistics
 python reproduce.py replay-statistics --bootstrap --output outputs/statistics_bootstrap
 ```
 
-The second command recomputes all 2,000 shared PCB bootstrap resamples. Without `--bootstrap`, point estimates and seed intervals are recomputed while PCB intervals use the supplied resampling array. These commands do not perform network inference.
+Both commands recompute pooled AP and seed statistics from the supplied board records. `--bootstrap` additionally recomputes all 2,000 shared paired PCB resamples; without it, the saved bootstrap differences supply the PCB intervals. Resampling uses the same boards for RGB and SPMF and all seeds, with pooled AP recomputed before averaging differences. These commands perform no network inference.
 
 ## Training
 
 ```bash
 python reproduce.py train-rgb --seed 3 --output outputs/rgb_seed_03
-python reproduce.py train-frozen --profile main --seed 0 --output outputs/main_adaptation
-python reproduce.py train-frozen --profile paired --seed 3 --output outputs/spmf_seed_03
+python reproduce.py train-frozen --profile main --seed 0 --output outputs/main_seed_00
+python reproduce.py train-frozen --profile main --seed 1 --output outputs/main_seed_01
+python reproduce.py train-frozen --profile main --seed 2 --output outputs/main_seed_02
+python reproduce.py train-frozen --profile paired --seed 3 --output outputs/paired_seed_03
 ```
 
-RGB pretraining uses 500 epochs. Frozen adaptation uses 120 epochs and updates only the HSI branch and SPMF while preserving the RGB parameters and batch-normalization state. `train-frozen` starts from the corresponding supplied unadapted state; it does not automatically consume the output of a preceding `train-rgb` command. Tensor migration for a new RGB prior is implemented in `spmf_pcb/initialization.py`.
+RGB pretraining uses 500 epochs. Each `train-frozen` command starts from its supplied unadapted state. It does not automatically consume a preceding `train-rgb` output; migration of a new RGB prior is implemented in `spmf_pcb/initialization.py`. Repeat the paired command for seeds 3–16 to run all fourteen pairs.
 
-Add `--dry-run` to `train-frozen` to check initialization, paired inputs, and a loss forward pass without optimizer updates. Fixed-checkpoint evaluation and preprocessing were checked in the reference environments; a complete rerun of every 500+120 epoch training sequence through this packaged entry point has not been performed. Exact retraining across different hardware/software is not guaranteed. The main initialization is recovered from the original recorded path; a contemporaneous immutable hash was not available. The paired initialization states were saved individually.
+Add `--dry-run` to check initialization, RGB–HSI routing, and one loss forward without optimizer updates. Supplied checkpoints and records are from completed runs. Complete retraining through this packaged entry point has not been repeated; bitwise agreement on different hardware/software is not guaranteed. The main initial state was recovered from the recorded training path; the paired initial states were saved separately.
 
 ## Forward throughput
 
@@ -123,7 +130,7 @@ Add `--dry-run` to `train-frozen` to check initialization, paired inputs, and a 
 python reproduce.py benchmark --output outputs/efficiency
 ```
 
-This uses the separate prepared timing inputs and the fixed frozen/joint checkpoints, FP16, batch 1, 640×640, Conv/BN fusion, and alternating synchronized measurements. It measures network forward time, excluding preprocessing, transfer, and NMS. The recorded throughputs are 52.859 and 52.554 FPS; a new run reports its actual measured times.
+The architecture-level benchmark uses the supplied frozen/joint timing checkpoints and prepared timing inputs, FP16, batch 1, 640×640, Conv/BN fusion, and alternating synchronized measurements. Recorded throughput is 52.859 and 52.554 FPS, respectively. These are separate architecture-level measurements, not measurements of the three main accuracy checkpoints. Preprocessing, transfer, and NMS are excluded; a new run reports its actual measured times.
 
 ## Repository layout
 

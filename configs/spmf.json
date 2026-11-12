@@ -1,0 +1,10 @@
+{
+  "reliability_enabled": true,
+  "reliability_floor": 0.0,
+  "reliability_floor_steps": 0,
+  "modulation_cap": 0.5,
+  "base_lr": 0.0003,
+  "gate_lr": 0.002,
+  "base_weight_decay": 0.0001,
+  "gate_weight_decay": 0.0
+}

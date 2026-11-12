@@ -22,7 +22,7 @@ def main():
     e = sub.add_parser("evaluate")
     e.add_argument("--profile", choices=["main", "paired"], required=True)
     e.add_argument("--seeds", default="all")
-    e.add_argument("--batch", type=int, choices=[16, 8], default=16)
+    e.add_argument("--batch", type=int, choices=[16], default=16)
     e.add_argument("--device", default="0")
     e.add_argument("--output", required=True)
     s = sub.add_parser("replay-statistics")

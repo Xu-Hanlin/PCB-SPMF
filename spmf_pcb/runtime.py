@@ -100,7 +100,7 @@ def verify_inputs(include_assets=True):
             continue
         p = ROOT / rel
         if not p.is_file() or sha(p) != h:
-            hint = " Extract PCB-SPMF-assets-v1.0.0.zip into the repository root." if rel in assets else ""
+            hint = " Extract PCB-SPMF-assets-v1.1.0.zip into the repository root." if rel in assets else ""
             raise RuntimeError("Release input missing or changed: " + rel + hint)
         checked += 1
     return checked

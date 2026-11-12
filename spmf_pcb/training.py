@@ -58,8 +58,8 @@ def run(args):
     from .paired_data import build_paired_dataset
     from . import frozen_optimizer as f
 
-    if args.profile == "main" and args.seed != 0:
-        raise ValueError("The archived main training recipe uses seed 0.")
+    if args.profile == "main" and args.seed not in (0, 1, 2):
+        raise ValueError("Main adaptation seeds are 0, 1, and 2 (one shared RGB prior).")
     if args.profile == "paired" and args.seed not in range(3, 17):
         raise ValueError("The paired seeds are 3--16.")
 
@@ -87,6 +87,10 @@ def run(args):
                 hsi_root=ROOT / "data/spectral" / args.profile,
             )
 
+    from .adaptation import configure, check
+    settings = read(ROOT / "configs/spmf.json")
+    f.CUSTOM.update(base_lr=settings["base_lr"], gate_lr=settings["gate_lr"],
+                    weight_decay=settings["base_weight_decay"], optimizer="AdamW")
     seed = args.seed
     initial_path = (
         ROOT / "weights/main/initial_state.pt"
@@ -104,6 +108,9 @@ def run(args):
         return int(k.split(".")[1]) not in range(10, 21)
 
     def setup(t):
+        configure(t.model.model[20], settings)
+        configure(t.ema.ema.model[20], settings)
+        save(out / "spmf_settings.json", settings)
         now = t.model.state_dict()
         assert set(now) == set(initial) and all(
             torch.equal(now[k].cpu(), v.to(now[k].dtype)) for k, v in initial.items()
@@ -236,7 +243,9 @@ def run(args):
     assert observer["batches"] == 720
     best = out / "SPMF/weights/best.pt"
     ck = torch.load(best, map_location="cpu")
-    sd = (ck.get("ema") or ck["model"]).state_dict()
+    saved_model = ck.get("ema") or ck["model"]
+    check(saved_model.model[20], settings)
+    sd = saved_model.state_dict()
     assert all(
         torch.equal(sd[k], v.to(sd[k].dtype)) for k, v in observer["initial"].items()
     )

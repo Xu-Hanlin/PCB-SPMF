@@ -1,35 +1,9 @@
 # -*- coding: utf-8 -*-
-"""
-DEA_14_pos: positive-only modulation fusion for safe MSI-guided RGB recalibration.
+"""Checkpoint-compatible Safe Positive Modulation Fusion implementation.
 
-Key idea
---------
-Previous DEA_14_fix already learned a live modulation branch, but the learned
-global gain could become negative, which means the MSI branch tended to suppress
-RGB features. In the user's PCB setting, RGB is a strong baseline, so a safer
-and more task-aligned design is:
-
-    MSI can only *enhance / recalibrate* RGB,
-    but should not directly suppress the main RGB pathway.
-
-Therefore this version enforces:
-- no direct MSI feature injection into output
-- non-negative global modulation gain
-- non-negative channel modulation
-- spatial gate remains local and sparse
-- overall modulation amplitude is small and capped
-
-Final form
-----------
-out = rgb * (1 + delta)
-
-delta = mix * gain_pos * c_mod_pos * s_gate
-
-where:
-- mix      : global sample-wise confidence / reliability term
-- gain_pos : scalar, non-negative, learnable
-- c_mod_pos: channel-wise non-negative modulation
-- s_gate   : local sparse spatial gate
+SPMF preserves the RGB feature as rgb * (1 + delta), where a learned
+reliability factor, bounded gain, and channel/spatial gates control delta.
+The serialized DEA class name is retained for checkpoint compatibility.
 """
 
 import torch
@@ -188,8 +162,8 @@ class DEA(nn.Module):
         reliability=True,
         rel_reduction=32,
         rel_init=-0.5,
-        force_steps=3000,
-        force_r=0.65,
+        force_steps=0,
+        force_r=0.0,
         warp=True,
         warp_max_shift=1.5,
         warp_align_corners=False,
@@ -202,7 +176,7 @@ class DEA(nn.Module):
         sp_temp=1.5,
         sp_sparse_pow=2.0,
         mod_init=-1.9,
-        mod_cap=0.22,
+        mod_cap=0.50,
         ch_init_bias=-1.8,
         ch_init_std=1e-3,
         ch_mod_floor=0.10,
